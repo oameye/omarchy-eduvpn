@@ -7,6 +7,7 @@
 
 var EDUVPN_NAME = "eduVPN"
 var CLI_LOCK = "${XDG_RUNTIME_DIR:-$HOME/.cache}/omarchy-eduvpn.lock"
+var CLI_LOCK_FALLBACK = "/tmp/omarchy-eduvpn.lock"
 
 function emptyStatus() {
   return {
@@ -186,12 +187,10 @@ function meaningfulError(raw) {
 // There can be one widget instance per monitor. Serializing all CLI calls also
 // protects the shared eduVPN state and OAuth token files from overlapping
 // registration/deregistration cycles.
-function cli(args) {
-  return [
-    "sh", "-c",
-    'exec flock -w 120 "' + CLI_LOCK + '" eduvpn-cli "$@"',
-    "eduvpn-cli"
-  ].concat(args || [])
+function cli(args, lockPath) {
+  var lock = String(lockPath || CLI_LOCK_FALLBACK || "")
+  if (lock === "") lock = CLI_LOCK_FALLBACK
+  return ["flock", "-w", "120", lock, "eduvpn-cli"].concat(args || [])
 }
 
 function connectArgs(serverNumber) {

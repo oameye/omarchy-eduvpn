@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import "model/Shared.js" as Shared
 import "model/EduVpn.js" as EduVpn
@@ -44,7 +45,7 @@ Item {
     : _desired === 1
   readonly property bool actionBusy: actionProcess.running || settleTimer.running
   readonly property bool busy: actionBusy || statusProcess.running || listProcess.running
-    || nmProcess.running || uuidProcess.running
+    || nmProcess.running
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 15, 5, 300)
 
   readonly property string summary: EduVpn.summary(status, connected)
@@ -62,6 +63,36 @@ Item {
     if (connected) return summary
     if (_serversLoaded && configuredServers.length === 0) return "Setup required"
     return "Not connected"
+  }
+
+  // Bounded limits: prevent unbounded shell memory from oversized command output.
+  readonly property int _maxOutput: 65536
+  readonly property int _uuidMax: 4096
+  readonly property int _procTimeoutMs: 8000
+  readonly property int _actionTimeoutMs: 120000
+
+  // Bounded nonblocking regular-file read for the predictable UUID path.
+  // FileView fails on FIFO/symlink-to-device instead of blocking like `cat`.
+  readonly property string _uuidPath: {
+    var xdg = Quickshell.env("XDG_CONFIG_HOME")
+    var home = Quickshell.env("HOME")
+    if (xdg && xdg !== "") return xdg + "/eduvpn/uuid"
+    return (home || "") + "/.config/eduvpn/uuid"
+  }
+  readonly property string _lockPath: {
+    var run = Quickshell.env("XDG_RUNTIME_DIR")
+    var home = Quickshell.env("HOME")
+    if (run && run !== "") return run + "/omarchy-eduvpn.lock"
+    return (home || "/tmp") + "/.cache/omarchy-eduvpn.lock"
+  }
+
+  function eduvpnCommand(args) {
+    return EduVpn.cli(args, root._lockPath)
+  }
+
+  function _bounded(text) {
+    var s = String(text || "")
+    return s.length > root._maxOutput ? s.slice(0, root._maxOutput) : s
   }
 
   function setting(name, fallback) {
@@ -99,7 +130,7 @@ Item {
       if (_statusAge >= 4) _statusDue = true
     }
 
-    if (!uuidProcess.running) uuidProcess.running = true
+    uuidFile.reload()
     if (!nmProcess.running) nmProcess.running = true
 
     var readBusy = statusProcess.running || listProcess.running
@@ -138,7 +169,7 @@ Item {
 
     startAction(
       "connect",
-      EduVpn.cli(EduVpn.connectArgs(configuredServers[0].number)),
+      root.eduvpnCommand(EduVpn.connectArgs(configuredServers[0].number)),
       "Connecting to " + configuredServers[0].label + "...",
       1
     )
@@ -146,12 +177,12 @@ Item {
 
   function disconnect() {
     if (!detected || actionBusy || !connected) return
-    startAction("disconnect", EduVpn.cli(EduVpn.disconnectArgs()), "Disconnecting...", 0)
+    startAction("disconnect", root.eduvpnCommand(EduVpn.disconnectArgs()), "Disconnecting...", 0)
   }
 
   function renew() {
     if (!detected || actionBusy || !connected) return
-    startAction("renew", EduVpn.cli(EduVpn.renewArgs()), "Renewing eduVPN...", 1)
+    startAction("renew", root.eduvpnCommand(EduVpn.renewArgs()), "Renewing eduVPN...", 1)
   }
 
   function toggleConnection() {
@@ -240,26 +271,39 @@ Item {
     }
   }
 
+  // Per-process watchdogs: enforce explicit time limits so a planted FIFO
+  // or hung CLI cannot block the bar indefinitely.
+  Timer { id: detectTimeout; interval: root._procTimeoutMs; repeat: false; onTriggered: if (detectProcess.running) detectProcess.running = false }
+  Timer { id: nmTimeout; interval: root._procTimeoutMs; repeat: false; onTriggered: if (nmProcess.running) nmProcess.running = false }
+  Timer { id: listTimeout; interval: root._procTimeoutMs; repeat: false; onTriggered: if (listProcess.running) listProcess.running = false }
+  Timer { id: statusTimeout; interval: root._procTimeoutMs; repeat: false; onTriggered: if (statusProcess.running) statusProcess.running = false }
+  Timer { id: actionTimeout; interval: root._actionTimeoutMs; repeat: false; onTriggered: if (actionProcess.running) actionProcess.running = false }
+
   Process {
     id: detectProcess
     command: ["omarchy-cmd-present", "eduvpn-cli"]
     running: true
+    onRunningChanged: if (running) detectTimeout.restart(); else detectTimeout.stop()
     onExited: function(exitCode) {
+      detectTimeout.stop()
       root._probed = true
       root._present = exitCode === 0
       if (root._present) root.refresh(true)
     }
   }
 
-  Process {
-    id: uuidProcess
-    command: ["sh", "-c", "cat \"${XDG_CONFIG_HOME:-$HOME/.config}/eduvpn/uuid\" 2>/dev/null"]
-    running: false
-    stdout: StdioCollector { id: uuidStdout; waitForEnd: true }
-    onExited: function(exitCode) {
-      var uuid = EduVpn.parseUuid(String(uuidStdout.text || ""))
+  FileView {
+    id: uuidFile
+    path: root._uuidPath
+    watchChanges: false
+    printErrors: false
+    blockLoading: false
+    onLoaded: {
+      var raw = String(text().slice(0, root._uuidMax) || "")
+      var uuid = EduVpn.parseUuid(raw)
       if (uuid !== "") root.serverUuid = uuid
     }
+    onLoadFailed: function(error) {}
   }
 
   Process {
@@ -267,10 +311,12 @@ Item {
     command: ["nmcli", "-t", "-f", "NAME,UUID,TYPE,ACTIVE", "connection", "show"]
     running: false
     stdout: StdioCollector { id: nmStdout; waitForEnd: true }
+    onRunningChanged: if (running) nmTimeout.restart(); else nmTimeout.stop()
     onExited: function(exitCode) {
+      nmTimeout.stop()
       if (exitCode !== 0) return
-      var active = EduVpn.parseNmcliActive(
-        String(nmStdout.text || ""), root.serverUuid, EduVpn.EDUVPN_NAME)
+      var out = root._bounded(nmStdout.text)
+      var active = EduVpn.parseNmcliActive(out, root.serverUuid, EduVpn.EDUVPN_NAME)
       root._nmKnown = true
       root._nmConnected = active.connected
       if (root.serverUuid === "" && active.uuid !== "") root.serverUuid = active.uuid
@@ -279,17 +325,19 @@ Item {
 
   Process {
     id: listProcess
-    command: EduVpn.cli(["list"])
+    command: root.eduvpnCommand(["list"])
     running: false
     stdout: StdioCollector { id: listStdout; waitForEnd: true }
     stderr: StdioCollector { id: listStderr; waitForEnd: true }
+    onRunningChanged: if (running) listTimeout.restart(); else listTimeout.stop()
     onExited: function(exitCode) {
-      var output = String(listStdout.text || "")
+      listTimeout.stop()
+      var output = root._bounded(listStdout.text)
       var parsed = EduVpn.parseConfiguredServers(output)
       if (exitCode !== 0 && parsed.length === 0) {
         if (root._lastActionError === "") {
           root.lastError = EduVpn.meaningfulError(
-            String(listStderr.text || "") + "\n" + output
+            root._bounded(listStderr.text) + "\n" + output
           ) || "Could not read the eduVPN server list."
         }
         root.scheduleRefresh()
@@ -304,12 +352,14 @@ Item {
 
   Process {
     id: statusProcess
-    command: EduVpn.cli(["status"])
+    command: root.eduvpnCommand(["status"])
     running: false
     stdout: StdioCollector { id: statusStdout; waitForEnd: true }
     stderr: StdioCollector { id: statusStderr; waitForEnd: true }
+    onRunningChanged: if (running) statusTimeout.restart(); else statusTimeout.stop()
     onExited: function(exitCode) {
-      var output = String(statusStdout.text || "") + "\n" + String(statusStderr.text || "")
+      statusTimeout.stop()
+      var output = root._bounded(statusStdout.text) + "\n" + root._bounded(statusStderr.text)
       var parsed = EduVpn.parseStatus(output)
       if (parsed.loaded) {
         root.status = parsed
@@ -330,9 +380,11 @@ Item {
     running: false
     stdout: StdioCollector { id: actionStdout; waitForEnd: true }
     stderr: StdioCollector { id: actionStderr; waitForEnd: true }
+    onRunningChanged: if (running) actionTimeout.restart(); else actionTimeout.stop()
     onExited: function(exitCode) {
+      actionTimeout.stop()
       var kind = root._actionKind
-      var output = String(actionStdout.text || "") + "\n" + String(actionStderr.text || "")
+      var output = root._bounded(actionStdout.text) + "\n" + root._bounded(actionStderr.text)
       root._actionKind = ""
       root._settleKind = kind
       root._lastActionError = EduVpn.meaningfulError(output)
