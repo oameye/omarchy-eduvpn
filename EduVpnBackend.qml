@@ -51,7 +51,8 @@ Item {
   readonly property var details: EduVpn.details(status, connected)
   readonly property string statusLine: actionStatus !== "" ? actionStatus : lastError
   readonly property string setupHint: {
-    if (!_present || !_serversLoaded) return ""
+    if (!_present) return "Install eduVPN with: omarchy pkg aur add python-eduvpn-client"
+    if (!_serversLoaded) return ""
     if (configuredServers.length === 0) return "No server is configured. Use Connect to start eduVPN setup."
     if (configuredServers.length > 1) return "Multiple servers are configured. Use the eduVPN CLI to choose one."
     return ""

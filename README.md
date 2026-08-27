@@ -24,6 +24,19 @@ the complete eduVPN lifecycle, including browser authentication and renewal.
 - NetworkManager, as required by eduVPN.
 - A working browser and Secret Service/keyring for browser authorization.
 
+Install the eduVPN client and CLI through Omarchy's AUR helper:
+
+```bash
+omarchy pkg aur add python-eduvpn-client
+```
+
+This provides `/usr/bin/eduvpn-cli` and pulls in the required
+`python-eduvpn_common` dependency. Verify the installation with:
+
+```bash
+eduvpn-cli --version
+```
+
 Set up eduVPN once from a terminal if no server is configured:
 
 ```bash
