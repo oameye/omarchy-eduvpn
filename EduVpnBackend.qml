@@ -132,7 +132,7 @@ Item {
     // to ask which server or profile the user means. The terminal fallback keeps
     // that setup path fully interactive and visible.
     if (configuredServers.length !== 1) {
-      terminalRequired("eduvpn-cli connect")
+      terminalRequired("eduvpn-cli interactive")
       return
     }
 

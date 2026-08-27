@@ -37,10 +37,25 @@ This provides `/usr/bin/eduvpn-cli` and pulls in the required
 eduvpn-cli --version
 ```
 
-Set up eduVPN once from a terminal if no server is configured:
+Set up eduVPN once from an interactive terminal if no server is configured:
 
 ```bash
-eduvpn-cli connect
+eduvpn-cli interactive
+```
+
+At the `[eduVPN]:` prompt, enter `connect`. Search for your institution,
+select it, and complete the browser authorization. For example, the
+University Konstanz server is then saved as a configured server and can be
+listed with:
+
+```bash
+eduvpn-cli list
+```
+
+After setup, connect to the saved server with its number, for example:
+
+```bash
+eduvpn-cli connect -n 1
 ```
 
 ## Install
