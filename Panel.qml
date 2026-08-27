@@ -18,6 +18,9 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property string statusLine: vpn.actionStatus !== "" ? vpn.actionStatus : vpn.lastError
+  property bool _disconnectArmed: false
+
+  Timer { id: disconnectConfirmTimer; interval: 2500; repeat: false; onTriggered: root._disconnectArmed = false }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -36,6 +39,8 @@ Panel {
     target: vpn
     function onTerminalRequired(command) {
       if (!root.bar) return
+      // Allowlist: only the interactive setup flow is expected; never run arbitrary payloads.
+      if (command !== "eduvpn-cli interactive") return
       root.bar.run("omarchy-launch-floating-terminal-with-presentation " + Util.shellQuote(command))
       root.close()
     }
@@ -50,17 +55,33 @@ Panel {
     function toggle(): void { root.toggle() }
     function refresh(): string { vpn.refresh(true); return "ok" }
     function status(): string { return vpn.barSummary }
-    function connect(): string { vpn.connect(); return "ok" }
-    function disconnect(): string { vpn.disconnect(); return "ok" }
-    function renew(): string { vpn.renew(); return "ok" }
+    function connect(): string {
+      if (!vpn.detected) return "not-installed"
+      if (vpn.pending || vpn.actionBusy) return "busy"
+      if (!vpn._serversLoaded) { vpn.connect(); return "loading" }
+      if (vpn.configuredServers.length !== 1) return "need-terminal"
+      vpn.connect(); return "ok:connecting"
+    }
+    function disconnect(): string {
+      if (!vpn.detected) return "not-installed"
+      if (vpn.pending || vpn.actionBusy) return "busy"
+      if (!vpn.connected) return "already-disconnected"
+      vpn.disconnect(); return "ok:disconnecting"
+    }
+    function renew(): string {
+      if (!vpn.detected) return "not-installed"
+      if (vpn.pending || vpn.actionBusy) return "busy"
+      if (!vpn.connected) return "not-connected"
+      vpn.renew(); return "ok:renewing"
+    }
   }
 
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: Shared.GLYPH_VPN
-    dimmed: !vpn.connected
+    text: vpn.pending ? Shared.GLYPH_REFRESH : Shared.GLYPH_VPN
+    dimmed: !vpn.connected && !vpn.pending
     tooltipText: "eduVPN: " + vpn.barSummary
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton) vpn.toggleConnection()
@@ -89,7 +110,18 @@ Panel {
       onTextKey: function(text) {
         if (text === "r" || text === "R") vpn.refresh(true)
         else if (text === "n" || text === "N") vpn.renew()
-        else if (text === "d" || text === "D") vpn.disconnect()
+        else if (text === "d" || text === "D") {
+          if (!root._disconnectArmed) {
+            root._disconnectArmed = true
+            disconnectConfirmTimer.restart()
+            vpn.actionStatus = "Press d again to disconnect"
+            // auto-clear via existing actionStatusTimer (3s) if not confirmed
+          } else {
+            root._disconnectArmed = false
+            disconnectConfirmTimer.stop()
+            vpn.disconnect()
+          }
+        }
       }
     }
 
@@ -112,14 +144,14 @@ Panel {
         PanelHero {
           width: parent.width
           title: "eduVPN"
-          meta: vpn.summary
+          meta: vpn.pending ? vpn.barSummary : vpn.summary
           foreground: root.foreground
           fontFamily: root.fontFamily
-          iconOpacity: vpn.connected ? 1.0 : 0.5
+          iconOpacity: vpn.pending ? 0.8 : (vpn.connected ? 1.0 : 0.5)
           iconComponent: Component {
             Text {
-              text: Shared.GLYPH_VPN
-              color: vpn.connected ? root.foreground : root.dim
+              text: vpn.pending ? Shared.GLYPH_REFRESH : Shared.GLYPH_VPN
+              color: vpn.pending ? root.urgent : (vpn.connected ? root.foreground : root.dim)
               font.family: root.fontFamily
               font.pixelSize: Style.font.display
             }
@@ -188,9 +220,9 @@ Panel {
           spacing: Style.space(8)
 
           ActionButton {
-            label: vpn.connected ? "Disconnect" : "Connect"
-            detail: vpn.connected ? "Stop the eduVPN tunnel" : "Start the configured server"
-            actionable: vpn.detected && !vpn.actionBusy
+            label: vpn.pending ? "Working..." : (vpn.connected ? "Disconnect" : "Connect")
+            detail: vpn.pending ? vpn.barSummary : (vpn.connected ? "Stop the eduVPN tunnel" : "Start the configured server")
+            actionable: vpn.detected && !vpn.actionBusy && !vpn.pending
             Layout.fillWidth: true
             onClicked: vpn.toggleConnection()
           }
@@ -198,7 +230,7 @@ Panel {
           ActionButton {
             label: "Renew"
             detail: "Refresh authorization and reconnect"
-            actionable: vpn.detected && vpn.connected && !vpn.actionBusy
+            actionable: vpn.detected && vpn.connected && !vpn.actionBusy && !vpn.pending
             Layout.fillWidth: true
             onClicked: vpn.renew()
           }
@@ -216,7 +248,7 @@ Panel {
 
         Text {
           width: parent.width
-          text: "Keys: Enter connect/disconnect, n renew, r refresh, d disconnect"
+          text: "Keys: Enter connect/disconnect, n renew, r refresh, d disconnect (press twice)"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

@@ -66,14 +66,25 @@ test("parseNmcliActive matches the eduVPN UUID, not another active tunnel", () =
   })
 })
 
-test("parseNmcliActive falls back to the exact profile name without a UUID", () => {
+test("parseNmcliActive does not fall back to name without a UUID", () => {
   eq(EduVpn.parseNmcliActive(
     "eduVPN:22222222-2222-4222-8222-222222222222:wireguard:yes",
     "",
     "eduVPN"
   ), {
-    connected: true,
-    uuid: "22222222-2222-4222-8222-222222222222",
+    connected: false,
+    uuid: "",
+  })
+})
+
+test("parseNmcliActive requires TYPE wireguard", () => {
+  eq(EduVpn.parseNmcliActive(
+    "eduVPN:22222222-2222-4222-8222-222222222222:ethernet:yes",
+    "22222222-2222-4222-8222-222222222222",
+    "eduVPN"
+  ), {
+    connected: false,
+    uuid: "",
   })
 })
 

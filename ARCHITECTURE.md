@@ -11,7 +11,7 @@ small asynchronous UI around those operations.
 |------|------|
 | `manifest.json` | Plugin identity, bar entry point, and refresh setting |
 | `Panel.qml` | Bar icon, popup layout, buttons, and IPC surface |
-| `EduVpnBackend.qml` | CLI process plumbing, polling, actions, and optimistic state |
+| `EduVpnBackend.qml` | CLI process plumbing, polling, actions, and pending (non-optimistic) state |
 | `model/EduVpn.js` | Pure parsers, command builders, and display rows |
 | `model/Shared.js` | Small visual and text helpers |
 | `tests/model/eduvpn.test.js` | Parser and command-builder regression tests |
@@ -44,10 +44,17 @@ Disconnect and Renew run the corresponding official CLI commands. If there are
 zero or multiple configured servers, Connect opens a floating terminal for the
 interactive CLI rather than guessing.
 
-All CLI calls are wrapped in a user-runtime `flock`. The bar may be instantiated
-once per monitor, and eduVPN shares state and OAuth token files between those
-instances. Action processes are never force-killed because eduVPN cleanup can
-be incomplete after an abrupt termination.
+All CLI calls are wrapped in a user-runtime `flock -w 30` (absolute `/usr/bin/flock`
+under `$XDG_RUNTIME_DIR`, symlink-checked) and capped to 64kB via `head -c`
+before QML buffering (`4096B` for the UUID file, with `test ! -L`/`! -p`
+guards). The bar is a singleton (`allowMultiple:false`), and eduVPN shares
+state and OAuth token files between invocations.
+
+Action processes are not optimistically marked `connected`; a `pending` spinner
+is shown until NetworkManager confirms the state. Probes (`nmcli`/`status`/
+`list`/`uuid`) are force-killed after 8s if hung, but `action` follows a
+warn-then-kill (120s warn, 15s grace before SIGTERM) because eduVPN cleanup
+can be incomplete after an abrupt termination.
 
 eduVPN catches many command failures while still exiting successfully. An
 action is therefore considered successful only after a follow-up NetworkManager
