@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "jkoestinger.vpn",
-  "name": "VPN",
-  "version": "1.4.0",
-  "author": "Justin",
+  "id": "oameye.eduvpn",
+  "name": "eduVPN",
+  "version": "0.1.0",
+  "author": "Orjan Ameye",
   "license": "MIT",
-  "description": "VPN status and switching in the Omarchy bar, across whichever VPN tools are installed.",
+  "description": "A focused eduVPN controller for the Omarchy bar.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,16 +13,13 @@
     "barWidget": "Panel.qml"
   },
   "barWidget": {
-    "displayName": "VPN",
-    "description": "Detects installed VPN tools (Proton VPN, Mullvad, Windscribe, and NetworkManager's OpenVPN, WireGuard, OpenConnect and VPNC profiles) and switches between them from one bar icon.",
+    "displayName": "eduVPN",
+    "description": "Connect, disconnect, inspect, and renew eduVPN from the Omarchy bar.",
     "category": "Network",
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "refreshIntervalSec": 15,
-      "preferredBackend": "Auto",
-      "favoriteCountries": "CH,NL,US",
-      "hiddenBackends": ""
+      "refreshIntervalSec": 15
     },
     "schema": [
       {
@@ -30,37 +27,9 @@
         "type": "integer",
         "label": "Refresh interval (seconds)",
         "min": 5,
-        "max": 600,
+        "max": 300,
         "step": 5,
         "defaultValue": 15
-      },
-      {
-        "key": "preferredBackend",
-        "type": "enum",
-        "label": "VPN tool shown first",
-        "options": [
-          "Auto",
-          "Proton VPN",
-          "Mullvad",
-          "Windscribe",
-          "NetworkManager"
-        ],
-        "defaultValue": "Auto",
-        "description": "Auto picks whichever detected tool is connected, otherwise the first one found."
-      },
-      {
-        "key": "favoriteCountries",
-        "type": "string",
-        "label": "Favorite countries (comma separated)",
-        "defaultValue": "CH,NL,US",
-        "description": "Two-letter codes for Proton VPN and Mullvad. Windscribe names its regions instead, so it matches full names (\"Switzerland\") and leading words (\"US\" picks up US East, US Central and US West)."
-      },
-      {
-        "key": "hiddenBackends",
-        "type": "string",
-        "label": "Hidden VPN tools (comma separated)",
-        "defaultValue": "",
-        "description": "Tools the widget ignores entirely: proton, mullvad, windscribe, networkmanager. Also editable from the gear inside the panel."
       }
     ]
   }
