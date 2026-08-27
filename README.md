@@ -4,6 +4,10 @@ A small Omarchy bar widget for controlling the official `eduvpn-cli` client.
 It keeps eduVPN as the owner of authentication and NetworkManager profiles,
 while providing the useful daily controls in the bar.
 
+<p align="center">
+  <img src="preview.png" alt="eduVPN Omarchy bar widget showing a connected University Konstanz VPN" width="450">
+</p>
+
 ## Features
 
 - Shows whether the eduVPN tunnel is connected.
