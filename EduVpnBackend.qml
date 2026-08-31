@@ -11,6 +11,9 @@ Item {
   visible: false
 
   property var settings: ({})
+  property string configHome: ""
+  property string home: ""
+  property string runtimeDir: ""
   property var status: EduVpn.parseStatus("")
   property var configuredServers: []
   property string serverUuid: ""
@@ -76,21 +79,21 @@ Item {
 
   // UUID path: fail closed if env is missing; no /tmp fallback.
   readonly property string _uuidPath: {
-    var xdg = Quickshell.env("XDG_CONFIG_HOME")
-    var home = Quickshell.env("HOME")
+    var xdg = root.configHome
+    var homeDir = root.home
     if (xdg && xdg !== "") {
       if (xdg.indexOf("..") !== -1 || xdg[0] !== "/") return ""
       return xdg + "/eduvpn/uuid"
     }
-    if (home && home !== "") {
-      if (home.indexOf("..") !== -1 || home[0] !== "/") return ""
-      return home + "/.config/eduvpn/uuid"
+    if (homeDir && homeDir !== "") {
+      if (homeDir.indexOf("..") !== -1 || homeDir[0] !== "/") return ""
+      return homeDir + "/.config/eduvpn/uuid"
     }
     return ""
   }
   // Lock path: mandatory XDG_RUNTIME_DIR (0700 tmpfs). No world-writable fallback.
   readonly property string _lockPath: {
-    var run = Quickshell.env("XDG_RUNTIME_DIR")
+    var run = root.runtimeDir
     if (run && run !== "") {
       if (run.indexOf("..") !== -1 || run[0] !== "/") return ""
       return run + "/omarchy-eduvpn.lock"

@@ -28,6 +28,9 @@ Panel {
   EduVpnBackend {
     id: vpn
     settings: root.settings
+    configHome: Quickshell.env("XDG_CONFIG_HOME")
+    home: Quickshell.env("HOME")
+    runtimeDir: Quickshell.env("XDG_RUNTIME_DIR")
   }
 
   onOpenedChanged: if (opened) {
